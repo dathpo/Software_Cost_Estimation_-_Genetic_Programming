@@ -3,6 +3,8 @@
 
 *.txt
 *.csv
+extra.py
+*.csv#
 venv/
 __pycache__/
 *.pyc
