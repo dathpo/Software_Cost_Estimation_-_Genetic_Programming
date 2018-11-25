@@ -12,7 +12,6 @@ from sklearn.model_selection import KFold
 import numpy as np
 from deap import algorithms, base, creator, tools, gp
 
-
 def main():
     pwd = os.path.abspath(os.path.dirname(__file__))
     data_dir_path = Path("data/")
@@ -30,6 +29,7 @@ def main():
     #     print(test_data)
     #     print()
 
+    k_fold_hofs = []
     for train_index, test_index in k_fold.split(df):
         train_data = df.iloc[train_index]
         test_data = df.iloc[test_index]
@@ -41,7 +41,7 @@ def main():
         toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.expr)
         toolbox.register("population", tools.initRepeat, list, toolbox.individual) # change to numpy array?
         toolbox.register("compile", gp.compile, pset=pset)
-        fitness_function = get_fitness(toolbox)
+        fitness_function = get_fitness(toolbox, 1)
         toolbox.register("evaluate", fitness_function, train_data)
         toolbox.register("select", tools.selTournament, tournsize=3)
         toolbox.register("mate", gp.cxOnePoint)
@@ -72,55 +72,82 @@ def main():
         #         aMuPlusLambda_data[i, j] = fit_func(test_data, hof.items[0])[0]
         #     print(j)
 
-        pop, log = algorithms.eaMuPlusLambda(pop, toolbox, 100, 300, 0.25, 0.5, 100, stats=mstats,
+        pop, log = algorithms.eaMuPlusLambda(pop, toolbox, 100, 300, 0.5, 0.5, 100, stats=mstats,
                                        halloffame=hof, verbose=True)
 
-        print(str(hof.items[0]) + "     " + str(hof.items[0].fitness))
-        print(fitness_function(test_data, hof.items[0]))
+        # pop, log = algorithms.eaSimple(pop, toolbox, 0.5, 0.1, 1, stats=mstats,
+        #                                halloffame=hof, verbose=True)
+
+        validation_fitness = fitness_function(test_data, hof.items[0])[0]
+
+        print()
+        print("Training Output:")
+        print("Training Data Rows:", len(train_data))
+        print("Fittest Individual (HoF):", hof.items[0])
+        print("Fitness of Best Model (MMRE):", str(hof.items[0].fitness)[1:-2])
+        print()
+        print("Model Validation with Test Data:")
+        print("Test Data Rows:", len(test_data))
+        print("Test Data Fitness (MMRE):", validation_fitness)
+        print()
+
+        k_fold_hofs.append((hof.items[0], str(hof.items[0].fitness)[1:-2], validation_fitness))
+
         del creator.FitnessMin
         del creator.Individual
 
+    validat_fits = []
+    for i, hof in enumerate(k_fold_hofs):
+        print()
+        print("Fold #{}".format(i+1))
+        print("Fittest Individual (HoF):", hof[0])
+        print("HoF Fitness (MMRE):", hof[1])
+        print("HoF Validation Fitness (MMRE):", hof[2])
+        validat_fits.append(hof[2])
 
-def get_fitness(toolbox):
+    print()
+    print("Mean Validation Fitness among Folds (MMRE):", np.mean(validat_fits))
+    print("Standard Deviation of Validation Fitness among Folds:", np.std(validat_fits))
+
+
+def get_fitness(toolbox, dataset_num):
     def evaluate(df, individual):
         func = toolbox.compile(expr=individual)
-        total_percentage_error = 0
+        magnitude_of_relative_error = 0
         for row in df.itertuples():
-            pred_effort = func(row[1], row[2], row[3], row[4], row[5], row[6], row[7])
-            actual_effort = row[8]
-            total_percentage_error += (abs(actual_effort - pred_effort) / actual_effort) * 100
-        return total_percentage_error / len(df),
+            if dataset_num == 1:
+                pred_effort = func(row[1], row[2], row[3], row[4], row[5], row[6])
+                actual_effort = row[7]
+            elif dataset_num == 2:
+                pred_effort = func(row[1], row[2], row[3], row[4], row[5], row[6], row[7])
+                actual_effort = row[8]
+            elif dataset_num == 3:
+                pred_effort = func(row[1], row[2], row[3], row[4], row[5], row[6], row[7])
+                actual_effort = row[8]
+            magnitude_of_relative_error += (abs(actual_effort - pred_effort) / actual_effort) * 100
+        mean_mre = magnitude_of_relative_error / len(df)
+        return mean_mre,
     return evaluate
 
 
 def prep_albrecht(df):
-    # df = df.drop(columns='AdjFP')
-    # y = df.Effort
-    # x = df.drop(columns=['Effort', 'AdjFP'])
-    pset = gp.PrimitiveSet("main", 7)       # Num of inputs (cols)
+    df = df.drop(columns='AdjFP')
+    pset = gp.PrimitiveSet("main", 6)       # Num of inputs (cols)
     pset.addPrimitive(operator.add, 2)      # Num of arguments (a+b)
     pset.addPrimitive(operator.sub, 2)
     pset.addPrimitive(operator.mul, 2)
     pset.addPrimitive(protectedDiv, 2)
-    # pset.addPrimitive(math.cos, 1)                                  # Negation
-    # pset.addPrimitive(math.sin, 1)                                  # Negation
-    # pset.addPrimitive(np.square, 1)
-    # pset.addPrimitive(np.sqrt, 1)
-    # pset.addPrimitive(np.log, 1)
-    # pset.addPrimitive(np.exp, 1)
-    pset.addPrimitive(operator.neg, 1)                                  # Negation
+    pset.addPrimitive(operator.neg, 1)
     pset.addEphemeralConstant("rand101", lambda: random.randint(0, 100))
-
     pset.renameArguments(ARG0='Input')
     pset.renameArguments(ARG1='Output')
     pset.renameArguments(ARG2='Inquiry')
     pset.renameArguments(ARG3='File')
     pset.renameArguments(ARG4='FPAdj')
     pset.renameArguments(ARG5='RawFPcounts')
-    pset.renameArguments(ARG6='AdjFP')
+    # pset.renameArguments(ARG6='AdjFP')
 
     return df, pset
-    # return pset
 
 def prep_china():
     pset = gp.PrimitiveSet("main", 1)       # Num of inputs (cols)
@@ -160,9 +187,9 @@ def prep_desharnais():
     pset.renameArguments(ARG1="y")
 
 
-def protectedDiv(a, b):
+def protectedDiv(left, right):
     try:
-        return a / b
+        return left / right
     except ZeroDivisionError:
         return 1
 
