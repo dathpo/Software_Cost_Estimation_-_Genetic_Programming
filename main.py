@@ -74,7 +74,7 @@ def execute_ea(pset, train_data, test_data):
     # pop, log = algorithms.eaSimple(pop, toolbox, 0.5, 0.5, 100, stats=mstats,
     #                                halloffame=hof, verbose=True)
 
-    pop, log = algorithms.eaMuPlusLambda(pop, toolbox, 100, 300, 0.5, 0.5, 100, stats=mstats,
+    pop, log = algorithms.eaMuPlusLambda(pop, toolbox, 100, 300, 0.5, 0.5, 1, stats=mstats,
                                    halloffame=hof, verbose=True)
 
     # pop, log = algorithms.eaMuCommaLambda(pop, toolbox, 100, 300, 0.5, 0.5, 100, stats=mstats,
@@ -126,8 +126,8 @@ def exec_k_fold(df, pset, is_ea):
     k_fold_lr_metrics = []
     lr_pred_effort_train = []
     lr_actual_effort_train = []
-    lr_pred_effort_test = []
-    lr_actual_effort_test = []
+    lr_pred_effort_test_tbf = []
+    lr_actual_effort_test_tbf = []
     z = 0
     for train_index, test_index in k_fold.split(df):
         z += 1
@@ -146,8 +146,13 @@ def exec_k_fold(df, pset, is_ea):
             k_fold_lr_metrics.append((train_info[2], test_info[2]))
             lr_pred_effort_train.append(train_info[0])
             lr_actual_effort_train.append(train_info[1])
-            lr_pred_effort_test.append(test_info[0])
-            lr_actual_effort_test.append(test_info[1])
+            lr_pred_effort_test_tbf.append(test_info[0])
+            lr_actual_effort_test_tbf.append(test_info[1])
+            lr_pred_effort_test = []
+            for i in lr_pred_effort_test_tbf:
+                lr_pred_effort_test.append(list(i))
+            lr_pred_effort_test = np.array([item for sublist in lr_pred_effort_test for item in sublist])
+            lr_actual_effort_test = np.array([item for sublist in lr_actual_effort_test_tbf for item in sublist])
 
     if is_ea:
         ea_pred_effort = [item for sublist in ea_pred_effort for item in sublist]
@@ -167,6 +172,7 @@ def exec_k_fold(df, pset, is_ea):
         print("Genetic Programming Metrics:")
         print("Mean Validation Fitness among Folds (MMRE):", np.mean(validat_fits))
         print("Standard Deviation of Validation Fitness among Folds:", np.std(validat_fits))
+        print("PRED(25) of Validation Data:", pred(ea_pred_effort, ea_actual_effort, 25), "%")
 
     else:
         lr_validat_fits = []
@@ -181,9 +187,20 @@ def exec_k_fold(df, pset, is_ea):
         print("Linear Regression Metrics:")
         print("Mean Validation Fitness among Folds (MMRE):", np.mean(lr_validat_fits))
         print("Standard Deviation of Validation Fitness among Folds:", np.std(lr_validat_fits))
+        print("PRED(25) of Validation Data:", pred(lr_pred_effort_test, lr_actual_effort_test, 25), "%")
 
         # plot_data(ea_pred_effort, ea_actual_effort, lr_pred_effort_test, lr_actual_effort_test)
         plot_data(lr_pred_effort_train, lr_actual_effort_train, lr_pred_effort_test, lr_actual_effort_test)
+
+
+def pred(pred, actual, n):
+    less_than_n = 0
+    for i in range(len(pred)):
+        distance_pc = (abs(actual[i] - pred[i]) / actual[i]) * 100
+        if distance_pc <= n:
+            less_than_n += 1
+    value = less_than_n / len(pred) * 100
+    return value
 
 
 def execute_lr(train_data, test_data):
@@ -218,17 +235,11 @@ def execute_lr(train_data, test_data):
     return train_info, test_info
 
 
-def plot_data(pred_effort_train, actual_effort_train, lr_pred_effort_test_tbf, lr_actual_effort_test_tbf):
+def plot_data(pred_effort_train, actual_effort_train, lr_pred_effort_test, lr_actual_effort_test):
     global z
     global pwd
     global gp_pred_effort
     global gp_actual_effort
-
-    lr_pred_effort_test = []
-    for i in lr_pred_effort_test_tbf:
-        lr_pred_effort_test.append(list(i))
-    lr_pred_effort_test = np.array([item for sublist in lr_pred_effort_test for item in sublist])
-    lr_actual_effort_test = np.array([item for sublist in lr_actual_effort_test_tbf for item in sublist])
 
     mean = np.mean(gp_actual_effort)
     mean_arr = np.zeros(len(gp_actual_effort))
@@ -247,9 +258,13 @@ def plot_data(pred_effort_train, actual_effort_train, lr_pred_effort_test_tbf, l
     plt.xlabel("Predicted Effort")
     plt.ylabel("Actual Effort")
     plt.legend(loc="upper left")
-    plt.plot([0, 98], [0, 100], c="red")
-    graph_path = os.path.join(pwd, '{}'.format(str(z) + 'predict_comparison.pdf'))
+    plt.plot([0, 100], [0, 100], c="red")
+    plt.plot([mean, mean],[0,100], c='blue', label="Mean Effort")
+    plt.plot([median, median], [0, 100], c='#ff00ff', label="Median Effort")
+    graph_path = os.path.join(pwd, '{}'.format(str(z) + 'pred_comparison.pdf'))
     fig.savefig(graph_path, bbox_inches="tight")
+
+    
 
     # # Train Test Split Plot predictions - Training vs Validation Data
     # fig = plt.figure(figsize=(8, 6))
