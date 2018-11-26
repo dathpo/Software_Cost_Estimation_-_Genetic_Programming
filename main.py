@@ -12,7 +12,11 @@ from sklearn.linear_model import LinearRegression
 import numpy as np
 from deap import algorithms, base, creator, tools, gp
 import seaborn as sns; sns.set()
+from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
+import pandas as pd
+
+pd.options.mode.chained_assignment = None
 
 
 def main():
@@ -62,15 +66,6 @@ def execute_ea(pset, train_data, test_data):
     mstats.register("min", np.min)
     mstats.register("max", np.max)
 
-    # aMuPlusLambda_data = np.zeros((no_generations, no_runs))
-    # for j in range(no_runs):
-    #     for i in range(no_generations):
-    #         pop, log = algorithms.eaMuPlusLambda(pop, toolbox, 100, 300, 0.25, 0.75, 1, stats=mstats, \
-    #                                              halloffame=hof, verbose=True)
-    #         eaSimple_data[i, j] = hof.items[0].fitness.values[0]
-    #         aMuPlusLambda_data[i, j] = fit_func(test_data, hof.items[0])[0]
-    #     print(j)
-
     # pop, log = algorithms.eaSimple(pop, toolbox, 0.5, 0.5, 100, stats=mstats,
     #                                halloffame=hof, verbose=True)
 
@@ -101,22 +96,22 @@ def execute_ea(pset, train_data, test_data):
 
 
 def exec_train_test_split(df, pset, is_ea):
-    global z
-    z = 100
+    global j
+    j = 100
     train_data, test_data = train_test_split(df, test_size=0.25, random_state=0)
     if is_ea:
         execute_ea(pset, train_data, test_data)
     else:
         train_info, test_info = execute_lr(train_data, test_data)
-        pred_effort_train = train_info[0]
-        actual_effort_train = train_info[1]
-        pred_effort_test = test_info[0]
-        actual_effort_test = test_info[1]
+        pred_effort_train = np.expm1(train_info[0])
+        actual_effort_train = np.expm1(train_info[1])
+        pred_effort_test = np.expm1(test_info[0])
+        actual_effort_test = np.expm1(test_info[1])
         plot_data(pred_effort_train, actual_effort_train, pred_effort_test, actual_effort_test)
 
 
 def exec_k_fold(df, pset, is_ea):
-    global z
+    global j
     global gp_pred_effort
     global gp_actual_effort
     k_fold = KFold(10, True, 1)
@@ -124,13 +119,13 @@ def exec_k_fold(df, pset, is_ea):
     ea_pred_effort = []
     ea_actual_effort = []
     k_fold_lr_metrics = []
-    lr_pred_effort_train = []
-    lr_actual_effort_train = []
+    lr_pred_effort_train_tbf = []
+    lr_actual_effort_train_tbf = []
     lr_pred_effort_test_tbf = []
     lr_actual_effort_test_tbf = []
-    z = 0
+    j = 0
     for train_index, test_index in k_fold.split(df):
-        z += 1
+        j += 1
         train_data = df.iloc[train_index]
         test_data = df.iloc[test_index]
 
@@ -144,14 +139,19 @@ def exec_k_fold(df, pset, is_ea):
         else:
             train_info, test_info = execute_lr(train_data, test_data)
             k_fold_lr_metrics.append((train_info[2], test_info[2]))
-            lr_pred_effort_train.append(train_info[0])
-            lr_actual_effort_train.append(train_info[1])
+            lr_pred_effort_train_tbf.append(train_info[0])
+            lr_pred_effort_train = []
+            for l in lr_pred_effort_train_tbf:
+                lr_pred_effort_train.append(list(l))
+            lr_pred_effort_train = np.array([item for sublist in lr_pred_effort_train for item in sublist])
+            lr_actual_effort_train_tbf.append(train_info[1])
+            lr_actual_effort_train = np.array([item for sublist in lr_actual_effort_train_tbf for item in sublist])
             lr_pred_effort_test_tbf.append(test_info[0])
-            lr_actual_effort_test_tbf.append(test_info[1])
             lr_pred_effort_test = []
             for i in lr_pred_effort_test_tbf:
                 lr_pred_effort_test.append(list(i))
             lr_pred_effort_test = np.array([item for sublist in lr_pred_effort_test for item in sublist])
+            lr_actual_effort_test_tbf.append(test_info[1])
             lr_actual_effort_test = np.array([item for sublist in lr_actual_effort_test_tbf for item in sublist])
 
     if is_ea:
@@ -189,7 +189,11 @@ def exec_k_fold(df, pset, is_ea):
         print("Standard Deviation of Validation Fitness among Folds:", np.std(lr_validat_fits))
         print("PRED(25) of Validation Data:", pred(lr_pred_effort_test, lr_actual_effort_test, 25), "%")
 
-        # plot_data(ea_pred_effort, ea_actual_effort, lr_pred_effort_test, lr_actual_effort_test)
+        lr_pred_effort_train = np.expm1(lr_pred_effort_train)
+        lr_actual_effort_train = np.expm1(lr_actual_effort_train)
+        lr_pred_effort_test = np.expm1(lr_pred_effort_test)
+        lr_actual_effort_test = np.expm1(lr_actual_effort_test)
+
         plot_data(lr_pred_effort_train, lr_actual_effort_train, lr_pred_effort_test, lr_actual_effort_test)
 
 
@@ -199,15 +203,29 @@ def pred(pred, actual, n):
         distance_pc = (abs(actual[i] - pred[i]) / actual[i]) * 100
         if distance_pc <= n:
             less_than_n += 1
-    value = less_than_n / len(pred) * 100
+    value = (less_than_n / len(pred)) * 100
     return value
 
 
 def execute_lr(train_data, test_data):
+    train_data.iloc[:, -1] = np.log1p(train_data.iloc[:, -1])
+    test_data.iloc[:, -1] = np.log1p(test_data.iloc[:, -1])
+
+    concated = pd.concat([train_data, test_data])
+    corr = concated.corr()
+    corr = corr.sort_values([concated.columns[-1]], ascending=False)
+    print("Correlation Coefficients:")
+    print(corr[concated.columns[-1]])
+    print()
+
     y_train = train_data[train_data.columns[-1]]
     x_train = train_data.drop(train_data.columns[len(train_data.columns)-1], axis=1)
     y_test = test_data[test_data.columns[-1]]
     x_test = test_data.drop(test_data.columns[len(test_data.columns)-1], axis=1)
+
+    scaler = StandardScaler()
+    x_train = scaler.fit_transform(x_train)
+    x_test = scaler.transform(x_test)
 
     lr_model = LinearRegression()
     lr_model.fit(x_train, y_train)
@@ -236,7 +254,7 @@ def execute_lr(train_data, test_data):
 
 
 def plot_data(pred_effort_train, actual_effort_train, lr_pred_effort_test, lr_actual_effort_test):
-    global z
+    global j
     global pwd
     global gp_pred_effort
     global gp_actual_effort
@@ -261,10 +279,39 @@ def plot_data(pred_effort_train, actual_effort_train, lr_pred_effort_test, lr_ac
     plt.plot([0, 100], [0, 100], c="red")
     plt.plot([mean, mean],[0,100], c='blue', label="Mean Effort")
     plt.plot([median, median], [0, 100], c='#ff00ff', label="Median Effort")
-    graph_path = os.path.join(pwd, '{}'.format(str(z) + 'pred_comparison.pdf'))
+    graph_path = os.path.join(pwd, '{}'.format(str(j) + 'pred_comparison.pdf'))
     fig.savefig(graph_path, bbox_inches="tight")
 
-    
+    z_gp = []
+    for gp_pred, gp_actual in zip(gp_pred_effort, gp_actual_effort):
+        z_gp_sin = gp_pred / gp_actual
+        z_gp.append(z_gp_sin)
+    z_lr = []
+    for lr_pred, lr_actual in zip(lr_pred_effort_test, lr_actual_effort_test):
+        z_lr_sin = lr_pred / lr_actual
+        z_lr.append(z_lr_sin)
+    z_m = []
+    for m_pred, m_actual in zip(mean_arr, gp_actual_effort):
+        z_m_sin = m_pred / m_actual
+        z_m.append(z_m_sin)
+    z_md = []
+    for md_pred, md_actual in zip(median_arr, gp_actual_effort):
+        z_md_sin = md_pred / md_actual
+        z_md.append(z_md_sin)
+
+    # Plot Z Distribution - GP, LR, Mean, Median
+    fig = plt.figure(figsize=(8, 6))
+    sns.set(style="whitegrid")
+    box_data = [z_gp, z_lr, z_m, z_md]
+    df = pd.DataFrame(data=box_data)
+    df = df.transpose()
+    df.columns = ['GP', 'Linear Regression', 'Mean Effort', 'Median Effort']
+    bplot = sns.boxplot(data=df)
+    bplot.axes.set_title("z Values Distribution - Comparison")
+    bplot.set_xlabel("Search Technique")
+    bplot.set_ylabel("z value")
+    graph_path = os.path.join(pwd, '{}'.format(str(j) + 'boxplot.pdf'))
+    fig.savefig(graph_path, bbox_inches="tight")
 
     # # Train Test Split Plot predictions - Training vs Validation Data
     # fig = plt.figure(figsize=(8, 6))
@@ -276,7 +323,7 @@ def plot_data(pred_effort_train, actual_effort_train, lr_pred_effort_test, lr_ac
     # plt.ylabel("Actual Effort")
     # plt.legend(loc="upper left")
     # plt.plot([0, 98], [0, 100], c="red")
-    # graph_path = os.path.join(pwd, '{}'.format(str(z) + 'td_vd_predict.pdf'))
+    # graph_path = os.path.join(pwd, '{}'.format(str(j) + 'td_vd_predict.pdf'))
     # fig.savefig(graph_path, bbox_inches="tight")
 
     # # Plot residuals
@@ -288,7 +335,7 @@ def plot_data(pred_effort_train, actual_effort_train, lr_pred_effort_test, lr_ac
     # plt.ylabel("Residuals")
     # plt.legend(loc="upper left")
     # plt.hlines(y=0, xmin=10.5, xmax=13.5, color="red")
-    # graph_path = os.path.join(pwd, '{}'.format(str(z) + 'resid.pdf'))
+    # graph_path = os.path.join(pwd, '{}'.format(str(j) + 'resid.pdf'))
     # fig.savefig(graph_path, bbox_inches="tight")
 
 
