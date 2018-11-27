@@ -23,10 +23,10 @@ def main():
     global pwd
     pwd = os.path.abspath(os.path.dirname(__file__))
     data_dir_path = Path("data/")
-    dataset = pwd / data_dir_path / "albrecht.arff"
+    dataset = pwd / data_dir_path / "desharnais.arff"
     parser = Parser(dataset)
     dataframe = parser.parse_data()
-    df, pset = prep_albrecht(dataframe)
+    df, pset = prep_desharnais(dataframe)
 
     exec_k_fold(df, pset, True)
     exec_k_fold(df, pset, False)
@@ -45,7 +45,7 @@ def execute_ea(pset, train_data, test_data):
     toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.expr)
     toolbox.register("population", tools.initRepeat, list, toolbox.individual)
     toolbox.register("compile", gp.compile, pset=pset)
-    fitness_function = get_fitness(toolbox, 1)
+    fitness_function = get_fitness(toolbox, 3)
     toolbox.register("evaluate", fitness_function, train_data)
     toolbox.register("select", tools.selTournament, tournsize=3)
     toolbox.register("mate", gp.cxOnePoint)
@@ -278,11 +278,11 @@ def plot_data(pred_effort_train, test_x, lr_pred_effort_test, lr_actual_effort_t
     plt.scatter(mean_arr_log, gp_actual_effort, 4, marker='D', c="blue", label="Mean Effort")
     # plt.scatter(median_arr, gp_actual_effort, 4, marker='D', c="#ff00ff", label="Median Effort")
     plt.plot([0, 4], [0, 4], c="black", label="Ideal Model")
-    plt.title("Effort Predictions - Validation Data")
+    plt.title("Effort Predictions - Validation Data - China")
     plt.xlabel("Predicted Effort (log(1 + x))")
     plt.ylabel("Actual Effort (log(1 + x))")
-    plt.xlim((0.8, 4))
-    plt.ylim((0, 4))
+    # plt.xlim((0.8, 4))
+    # plt.ylim((0, 4))
     plt.legend(loc="upper left")
     # plt.plot(test_x, lr_pred_effort_test, c="#ffa500", label="Ideal Model")
     # plt.plot([mean, mean],[0,100], c='blue', label="Mean Effort")
@@ -327,10 +327,10 @@ def plot_data(pred_effort_train, test_x, lr_pred_effort_test, lr_actual_effort_t
     df = df.transpose()
     df.columns = ['Genetic Programming', 'Linear Regression', 'Mean Effort']
     bplot = sns.boxplot(data=df)
-    bplot.axes.set_title("z Values Distribution - Comparison")
+    bplot.axes.set_title("z Values Distribution - Comparison - China")
     bplot.set_xlabel("Search Technique")
     bplot.set_ylabel("z value")
-    plt.ylim((0, 8))
+    # plt.ylim((-0.5, 8))
     graph_path = os.path.join(pwd, '{}'.format(str(j) + 'boxplot.pdf'))
     fig.savefig(graph_path, bbox_inches="tight")
 
@@ -380,8 +380,8 @@ def get_fitness(toolbox, dataset_num):
                 pred_effort = func(row[1], row[2], row[3], row[4], row[5], row[6])
                 actual_effort = row[7]
             elif dataset_num == 2:
-                pred_effort = func(row[1], row[2], row[3], row[4], row[5], row[6], row[7])
-                actual_effort = row[8]
+                pred_effort = func(row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10], row[11], row[12], row[13], row[14], row[15])
+                actual_effort = row[16]
             elif dataset_num == 3:
                 pred_effort = func(row[1], row[2], row[3], row[4], row[5], row[6], row[7])
                 actual_effort = row[8]
@@ -417,31 +417,59 @@ def prep_albrecht(df):
 
 
 def prep_china(df):
-    pset = gp.PrimitiveSet("main", 1)       # Num of inputs (cols)
+    df = df.drop(columns='ID')
+    df = df.drop(columns='Dev.Type')
+    df = df.drop(columns='N_effort')
+    df.Effort = np.log1p(df.Effort)
+    pset = gp.PrimitiveSet("main", 15)       # Num of inputs (cols)
     pset.addPrimitive(operator.add, 2)      # Num of arguments (a+b)
     pset.addPrimitive(operator.sub, 2)
     pset.addPrimitive(operator.mul, 2)
     pset.addPrimitive(protectedDiv, 2)
     pset.addPrimitive(operator.neg, 1)                                  # Negation
     pset.addEphemeralConstant("rand101", lambda: random.randint(0, 100))
-    pset.renameArguments(ARG0="x")
-    pset.renameArguments(ARG1="y")
-    pset.renameArguments(ARG2="x")
-    pset.renameArguments(ARG3="y")
+    pset.renameArguments(ARG0="AFP")
+    pset.renameArguments(ARG1="Input")
+    pset.renameArguments(ARG2="Output")
+    pset.renameArguments(ARG3="Enquiry")
+    pset.renameArguments(ARG4="File")
+    pset.renameArguments(ARG5="Interface")
+    pset.renameArguments(ARG6="Added")
+    pset.renameArguments(ARG7="Changed")
+    pset.renameArguments(ARG8="Deleted")
+    pset.renameArguments(ARG9="PDR_AFP")
+    pset.renameArguments(ARG10="PDR_UFP")
+    pset.renameArguments(ARG11="NPDR_AFP")
+    pset.renameArguments(ARG12="NPDU_UFP")
+    pset.renameArguments(ARG13="Resource")
+    pset.renameArguments(ARG14="Duration")
+    return df, pset
 
 
 def prep_desharnais(df):
-    pset = gp.PrimitiveSet("main", 1)       # Num of inputs (cols)
+    df = df.drop(columns='Project')
+    df = df.drop(columns='Adjustment')
+    df = df.drop(columns='PointsAjust')
+    df = df.drop(columns='Language')
+    effort_col = df['Effort']
+    df = df.drop(labels=['Effort'], axis=1)
+    df.insert(len(df.columns), 'Effort', effort_col)
+    df.Effort = np.log1p(df.Effort)
+    pset = gp.PrimitiveSet("main", 7)       # Num of inputs (cols)
     pset.addPrimitive(operator.add, 2)      # Num of arguments (a+b)
     pset.addPrimitive(operator.sub, 2)
     pset.addPrimitive(operator.mul, 2)
     pset.addPrimitive(protectedDiv, 2)
     pset.addPrimitive(operator.neg, 1)                                  # Negation
     pset.addEphemeralConstant("rand101", lambda: random.randint(0, 100))
-    pset.renameArguments(ARG0="x")
-    pset.renameArguments(ARG1="y")
-    pset.renameArguments(ARG0="x")
-    pset.renameArguments(ARG1="y")
+    pset.renameArguments(ARG0="TeamExp")
+    pset.renameArguments(ARG1="ManagerExp")
+    pset.renameArguments(ARG2="YearEnd")
+    pset.renameArguments(ARG3="Length")
+    pset.renameArguments(ARG4="Transactions")
+    pset.renameArguments(ARG5="Entities")
+    pset.renameArguments(ARG6="PointsNonAdjust")
+    return df, pset
 
 
 def protectedDiv(left, right):
