@@ -35,6 +35,7 @@ def main():
 
 def execute_ea(pset, train_data, test_data):
     global external_call
+    pop_num = 300
     external_call = False
     creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
     creator.create("Individual", gp.PrimitiveTree, fitness=creator.FitnessMin)
@@ -55,7 +56,7 @@ def execute_ea(pset, train_data, test_data):
     toolbox.decorate("mutate", gp.staticLimit(key=operator.attrgetter("height"), max_value=17))
 
     random.seed(1000)
-    pop = toolbox.population(n=300)
+    pop = toolbox.population(n=pop_num)
     hof = tools.HallOfFame(1)
 
     stats_fit = tools.Statistics(lambda ind: ind.fitness.values)
@@ -69,7 +70,7 @@ def execute_ea(pset, train_data, test_data):
     # pop, log = algorithms.eaSimple(pop, toolbox, 0.5, 0.5, 100, stats=mstats,
     #                                halloffame=hof, verbose=True)
 
-    pop, log = algorithms.eaMuPlusLambda(pop, toolbox, 100, 300, 0.5, 0.5, 1, stats=mstats,
+    pop, log = algorithms.eaMuPlusLambda(pop, toolbox, 100, pop_num, 0.5, 0.5, 100, stats=mstats,
                                    halloffame=hof, verbose=True)
 
     # pop, log = algorithms.eaMuCommaLambda(pop, toolbox, 100, 300, 0.5, 0.5, 100, stats=mstats,
@@ -123,6 +124,7 @@ def exec_k_fold(df, pset, is_ea):
     lr_actual_effort_train_tbf = []
     lr_pred_effort_test_tbf = []
     lr_actual_effort_test_tbf = []
+    test_x_list = []
     j = 0
     for train_index, test_index in k_fold.split(df):
         j += 1
@@ -140,19 +142,10 @@ def exec_k_fold(df, pset, is_ea):
             train_info, test_info = execute_lr(train_data, test_data)
             k_fold_lr_metrics.append((train_info[2], test_info[2]))
             lr_pred_effort_train_tbf.append(train_info[0])
-            lr_pred_effort_train = []
-            for l in lr_pred_effort_train_tbf:
-                lr_pred_effort_train.append(list(l))
-            lr_pred_effort_train = np.array([item for sublist in lr_pred_effort_train for item in sublist])
             lr_actual_effort_train_tbf.append(train_info[1])
-            lr_actual_effort_train = np.array([item for sublist in lr_actual_effort_train_tbf for item in sublist])
             lr_pred_effort_test_tbf.append(test_info[0])
-            lr_pred_effort_test = []
-            for i in lr_pred_effort_test_tbf:
-                lr_pred_effort_test.append(list(i))
-            lr_pred_effort_test = np.array([item for sublist in lr_pred_effort_test for item in sublist])
             lr_actual_effort_test_tbf.append(test_info[1])
-            lr_actual_effort_test = np.array([item for sublist in lr_actual_effort_test_tbf for item in sublist])
+            test_x_list.append(test_info[3])
 
     if is_ea:
         ea_pred_effort = [item for sublist in ea_pred_effort for item in sublist]
@@ -175,6 +168,20 @@ def exec_k_fold(df, pset, is_ea):
         print("PRED(25) of Validation Data:", pred(ea_pred_effort, ea_actual_effort, 25), "%")
 
     else:
+        lr_pred_effort_train = []
+        for l in lr_pred_effort_train_tbf:
+            lr_pred_effort_train.append(list(l))
+        lr_pred_effort_train = np.array([item for sublist in lr_pred_effort_train for item in sublist])
+        lr_actual_effort_train = np.array([item for sublist in lr_actual_effort_train_tbf for item in sublist])
+        lr_pred_effort_test = []
+        for i in lr_pred_effort_test_tbf:
+            lr_pred_effort_test.append(list(i))
+        lr_pred_effort_test = np.array([item for sublist in lr_pred_effort_test for item in sublist])
+        lr_actual_effort_test = np.array([item for sublist in lr_actual_effort_test_tbf for item in sublist])
+        test_x = []
+        for g in test_x_list:
+            test_x.append(list(g))
+        test_x = np.array([item for sublist in test_x for item in sublist])
         lr_validat_fits = []
         for i, el in enumerate(k_fold_lr_metrics):
             print()
@@ -189,12 +196,12 @@ def exec_k_fold(df, pset, is_ea):
         print("Standard Deviation of Validation Fitness among Folds:", np.std(lr_validat_fits))
         print("PRED(25) of Validation Data:", pred(lr_pred_effort_test, lr_actual_effort_test, 25), "%")
 
-        lr_pred_effort_train = np.expm1(lr_pred_effort_train)
-        lr_actual_effort_train = np.expm1(lr_actual_effort_train)
-        lr_pred_effort_test = np.expm1(lr_pred_effort_test)
-        lr_actual_effort_test = np.expm1(lr_actual_effort_test)
+        # lr_pred_effort_train = np.expm1(lr_pred_effort_train)
+        # lr_actual_effort_train = np.expm1(lr_actual_effort_train)
+        # lr_pred_effort_test = np.expm1(lr_pred_effort_test)
+        # lr_actual_effort_test = np.expm1(lr_actual_effort_test)
 
-        plot_data(lr_pred_effort_train, lr_actual_effort_train, lr_pred_effort_test, lr_actual_effort_test)
+        plot_data(lr_pred_effort_train, test_x, lr_pred_effort_test, lr_actual_effort_test)
 
 
 def pred(pred, actual, n):
@@ -208,13 +215,11 @@ def pred(pred, actual, n):
 
 
 def execute_lr(train_data, test_data):
-    train_data.iloc[:, -1] = np.log1p(train_data.iloc[:, -1])
-    test_data.iloc[:, -1] = np.log1p(test_data.iloc[:, -1])
-
     concated = pd.concat([train_data, test_data])
     corr = concated.corr()
     corr = corr.sort_values([concated.columns[-1]], ascending=False)
-    print("Correlation Coefficients:")
+    print()
+    print("Linear Regression Correlation Coefficients:")
     print(corr[concated.columns[-1]])
     print()
 
@@ -249,15 +254,46 @@ def execute_lr(train_data, test_data):
     print()
 
     train_info = pred_effort_train, actual_effort_train, mmre_train
-    test_info = pred_effort_test, actual_effort_test, mmre_test
+    test_info = pred_effort_test, actual_effort_test, mmre_test, x_test
     return train_info, test_info
 
 
-def plot_data(pred_effort_train, actual_effort_train, lr_pred_effort_test, lr_actual_effort_test):
+def plot_data(pred_effort_train, test_x, lr_pred_effort_test, lr_actual_effort_test):
     global j
     global pwd
     global gp_pred_effort
     global gp_actual_effort
+
+    mean_log = np.mean(gp_actual_effort)
+    mean_arr_log = np.zeros(len(gp_actual_effort))
+    mean_arr_log.fill(mean_log)
+    median_log = np.median(gp_actual_effort)
+    median_arr_log = np.zeros(len(gp_actual_effort))
+    median_arr_log.fill(median_log)
+
+    # Plot predictions - Compare GP and LR - K folds
+    fig = plt.figure(figsize=(8, 6))
+    plt.scatter(gp_pred_effort, gp_actual_effort, c="red", marker="D", edgecolors='black', label="Genetic Programming")
+    plt.scatter(lr_pred_effort_test, lr_actual_effort_test, c="lightgreen", marker="D", edgecolors='black', label="Linear Regression")
+    plt.scatter(mean_arr_log, gp_actual_effort, 4, marker='D', c="blue", label="Mean Effort")
+    # plt.scatter(median_arr, gp_actual_effort, 4, marker='D', c="#ff00ff", label="Median Effort")
+    plt.plot([0, 4], [0, 4], c="black", label="Ideal Model")
+    plt.title("Effort Predictions - Validation Data")
+    plt.xlabel("Predicted Effort (log(1 + x))")
+    plt.ylabel("Actual Effort (log(1 + x))")
+    plt.xlim((0.8, 4))
+    plt.ylim((0, 4))
+    plt.legend(loc="upper left")
+    # plt.plot(test_x, lr_pred_effort_test, c="#ffa500", label="Ideal Model")
+    # plt.plot([mean, mean],[0,100], c='blue', label="Mean Effort")
+    # plt.plot([median, median], [0, 100], c='#ff00ff', label="Median Effort")
+    graph_path = os.path.join(pwd, '{}'.format(str(j) + 'newpred_comparison.pdf'))
+    fig.savefig(graph_path, bbox_inches="tight")
+
+    gp_pred_effort = np.expm1(gp_pred_effort)
+    gp_actual_effort = np.expm1(gp_actual_effort)
+    lr_pred_effort_test = np.expm1(lr_pred_effort_test)
+    lr_actual_effort_test = np.expm1(lr_actual_effort_test)
 
     mean = np.mean(gp_actual_effort)
     mean_arr = np.zeros(len(gp_actual_effort))
@@ -265,22 +301,6 @@ def plot_data(pred_effort_train, actual_effort_train, lr_pred_effort_test, lr_ac
     median = np.median(gp_actual_effort)
     median_arr = np.zeros(len(gp_actual_effort))
     median_arr.fill(median)
-
-    # Plot predictions - Compare GP and LR - K folds
-    fig = plt.figure(figsize=(8, 6))
-    plt.scatter(gp_pred_effort, gp_actual_effort, c="red", marker="D", edgecolors='black', label="Genetic Programming")
-    plt.scatter(lr_pred_effort_test, lr_actual_effort_test, c="lightgreen", marker="D", edgecolors='black', label="Linear Regression")
-    plt.scatter(mean_arr, gp_actual_effort, 4, marker='D', c="blue", label="Mean Effort")
-    plt.scatter(median_arr, gp_actual_effort, 4, marker='D', c="#ff00ff", label="Median Effort")
-    plt.title("Effort Predictions - Validation Data")
-    plt.xlabel("Predicted Effort")
-    plt.ylabel("Actual Effort")
-    plt.legend(loc="upper left")
-    plt.plot([0, 100], [0, 100], c="red")
-    plt.plot([mean, mean],[0,100], c='blue', label="Mean Effort")
-    plt.plot([median, median], [0, 100], c='#ff00ff', label="Median Effort")
-    graph_path = os.path.join(pwd, '{}'.format(str(j) + 'pred_comparison.pdf'))
-    fig.savefig(graph_path, bbox_inches="tight")
 
     z_gp = []
     for gp_pred, gp_actual in zip(gp_pred_effort, gp_actual_effort):
@@ -302,14 +322,15 @@ def plot_data(pred_effort_train, actual_effort_train, lr_pred_effort_test, lr_ac
     # Plot Z Distribution - GP, LR, Mean, Median
     fig = plt.figure(figsize=(8, 6))
     sns.set(style="whitegrid")
-    box_data = [z_gp, z_lr, z_m, z_md]
+    box_data = [z_gp, z_lr, z_m]
     df = pd.DataFrame(data=box_data)
     df = df.transpose()
-    df.columns = ['GP', 'Linear Regression', 'Mean Effort', 'Median Effort']
+    df.columns = ['Genetic Programming', 'Linear Regression', 'Mean Effort']
     bplot = sns.boxplot(data=df)
     bplot.axes.set_title("z Values Distribution - Comparison")
     bplot.set_xlabel("Search Technique")
     bplot.set_ylabel("z value")
+    plt.ylim((0, 8))
     graph_path = os.path.join(pwd, '{}'.format(str(j) + 'boxplot.pdf'))
     fig.savefig(graph_path, bbox_inches="tight")
 
@@ -378,6 +399,7 @@ def get_fitness(toolbox, dataset_num):
 
 def prep_albrecht(df):
     df = df.drop(columns='AdjFP')
+    df.Effort = np.log1p(df.Effort)
     pset = gp.PrimitiveSet("main", 6)       # Num of inputs (cols)
     pset.addPrimitive(operator.add, 2)      # Num of arguments (a+b)
     pset.addPrimitive(operator.sub, 2)
